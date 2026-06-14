@@ -17,6 +17,9 @@ from ..config import (
     DEFAULT_TOP_K,
     EMBED_MODEL,
 )
+from ..logger import get_logger
+
+log = get_logger("retriever")
 
 _model: SentenceTransformer | None = None
 _collection: chromadb.Collection | None = None
@@ -37,18 +40,29 @@ def _get_collection() -> chromadb.Collection:
     return _collection
 
 
-def search_recipes(query: str, k: int = DEFAULT_TOP_K) -> list[dict[str, Any]]:
+def search_recipes(
+    query: str,
+    k: int = DEFAULT_TOP_K,
+) -> list[dict[str, Any]]:
     """
     Embed *query* and return the top-k most similar recipes from ChromaDB.
+
+    Dietary compliance is assessed by the agent from the returned ingredients
+    list rather than by keyword post-filtering here.
 
     Each result dict contains:
         title        — recipe title
         ingredients  — list[str]
         directions   — list[str]
+        category     — AllRecipes category (e.g. "world-cuisine", "main-dish")
+        rating       — average user rating (0.0 if unavailable)
+        rating_count — number of ratings (0 if unavailable)
+        url          — full AllRecipes URL for the recipe
         document     — full embedded text
         score        — cosine similarity in [0, 1] (higher = more relevant)
     """
-    embedding = _get_model().encode([query], convert_to_numpy=True)[0].tolist()
+    log.debug("search_recipes query=%r k=%d", query, k)
+    embedding = _get_model().encode(["query: " + query], convert_to_numpy=True)[0].tolist()
 
     results = _get_collection().query(
         query_embeddings=[embedding],
@@ -68,8 +82,17 @@ def search_recipes(query: str, k: int = DEFAULT_TOP_K) -> list[dict[str, Any]]:
             "title": meta.get("title", "Unknown"),
             "ingredients": json.loads(meta.get("ingredients", "[]")),
             "directions": json.loads(meta.get("directions", "[]")),
+            "category": meta.get("category", ""),
+            "rating": meta.get("rating", 0.0),
+            "rating_count": meta.get("rating_count", 0),
+            "url": meta.get("url", ""),
             "document": doc,
             "score": score,
         })
 
+    log.debug(
+        "search_recipes returned %d results: %s",
+        len(recipes),
+        [(r["title"], r["score"]) for r in recipes],
+    )
     return recipes

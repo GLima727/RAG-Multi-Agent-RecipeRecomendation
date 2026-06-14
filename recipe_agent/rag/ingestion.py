@@ -30,20 +30,21 @@ def build_document(recipe: dict) -> str:
     """
     Flatten a recipe into a single searchable text block.
 
-    Example output:
-        "Title: Garlic Butter Pasta
-         Ingredients: 200g spaghetti, 3 cloves garlic, 2 tbsp butter
-         Directions: Boil pasta. Melt butter, sauté garlic. Toss and serve."
+    Embeds title, description, ingredients, and directions so the vector
+    captures cuisine, cooking technique, and ingredient signals together.
     """
     title = recipe.get("title", "").strip()
+    description = (recipe.get("description") or "").strip()
+    ingredients = (recipe.get("ingredients") or "").strip()
+    directions = (recipe.get("directions") or "").strip()
 
-    raw_ing = recipe.get("ingredients", [])
-    ingredients = ", ".join(str(i).strip() for i in raw_ing if i) if isinstance(raw_ing, list) else str(raw_ing)
+    parts = [f"Title: {title}"]
+    if description:
+        parts.append(f"Description: {description}")
+    parts.append(f"Ingredients: {ingredients}")
+    parts.append(f"Directions: {directions}")
 
-    raw_dir = recipe.get("directions", [])
-    directions = " ".join(str(d).strip() for d in raw_dir if d) if isinstance(raw_dir, list) else str(raw_dir)
-
-    return f"Title: {title}\nIngredients: {ingredients}\nDirections: {directions}"
+    return "\n".join(parts)
 
 
 def build_metadata(recipe: dict) -> dict:
@@ -51,24 +52,25 @@ def build_metadata(recipe: dict) -> dict:
     Return a ChromaDB-compatible metadata dict (str/int/float/bool values only).
 
     Lists are JSON-serialised because ChromaDB doesn't support list values.
-
-    Example output:
-        {
-            "title": "Garlic Butter Pasta",
-            "ingredients": '["200g spaghetti", "3 cloves garlic", "2 tbsp butter"]',
-            "directions": '["Boil pasta.", "Melt butter, sauté garlic.", "Toss and serve."]'
-        }
+    Numeric fields default to 0 when absent so the type is always consistent.
     """
-    raw_ing = recipe.get("ingredients", [])
-    ingredients = [str(i).strip() for i in raw_ing if i] if isinstance(raw_ing, list) else [str(raw_ing)]
+    # Ingredients are semicolon-separated in Shengtao/recipe
+    raw_ing = recipe.get("ingredients") or ""
+    ingredients = [i.strip() for i in raw_ing.split(";") if i.strip()]
 
-    raw_dir = recipe.get("directions", [])
-    directions = [str(d).strip() for d in raw_dir if d] if isinstance(raw_dir, list) else [str(raw_dir)]
+    # instructions_list is already a structured list; fall back to directions text
+    raw_dir = recipe.get("instructions_list") or []
+    if not raw_dir:
+        raw_dir = [recipe.get("directions") or ""]
 
     return {
-        "title": str(recipe.get("title", "")).strip(),
+        "title": str(recipe.get("title") or "").strip(),
         "ingredients": json.dumps(ingredients),
-        "directions": json.dumps(directions),
+        "directions": json.dumps([str(d).strip() for d in raw_dir if d]),
+        "category": str(recipe.get("category") or "").strip(),
+        "rating": float(recipe.get("rating") or 0.0),
+        "rating_count": int(recipe.get("rating_count") or 0),
+        "url": str(recipe.get("url") or "").strip(),
     }
 
 
@@ -135,7 +137,8 @@ def ingest(
             documents = [build_document(r) for r in batch]
             metadatas = [build_metadata(r) for r in batch]
             ids = [str(start + i) for i in range(len(batch))]
-            embeddings = model.encode(documents, show_progress_bar=False, convert_to_numpy=True)
+            prefixed = ["passage: " + d for d in documents]
+            embeddings = model.encode(prefixed, show_progress_bar=False, convert_to_numpy=True)
 
             collection.add(
                 embeddings=embeddings.tolist(),

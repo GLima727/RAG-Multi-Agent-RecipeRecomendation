@@ -2,10 +2,11 @@
 main.py — CLI entrypoint for the Recipe Recommendation Agent.
 
 Usage:
-    python main.py [--provider anthropic|openai|groq|gemini]
+    python main.py [--debug]
 """
 
 import argparse
+import logging
 import os
 import sys
 
@@ -18,8 +19,8 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from recipe_agent import run_agent
+from recipe_agent.agents.recipe_agent import API_KEY_ENV, MODEL
 from recipe_agent.config import CHROMA_DB_PATH
-from recipe_agent.providers import REGISTRY, available_providers
 
 console = Console()
 
@@ -40,14 +41,12 @@ def _check_db() -> None:
         sys.exit(1)
 
 
-def _check_api_key(provider: str) -> None:
-    env_var = REGISTRY[provider].api_key_env
-    if not os.environ.get(env_var):
+def _check_api_key() -> None:
+    if not os.environ.get(API_KEY_ENV):
         console.print(Panel(
             f"[bold red]Missing API key.[/bold red]\n\n"
-            f"Set [bold cyan]{env_var}[/bold cyan] before running:\n\n"
-            f"    [bold]set {env_var}=your-key-here[/bold]   (Windows)\n"
-            f"    [bold]export {env_var}=your-key-here[/bold]   (macOS/Linux)",
+            f"Set [bold cyan]{API_KEY_ENV}[/bold cyan] before running:\n\n"
+            f"    [bold]export {API_KEY_ENV}=your-key-here[/bold]",
             title="Setup Required",
             border_style="red",
         ))
@@ -64,26 +63,22 @@ def _ask(prompt: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recipe Recommendation Agent")
-    parser.add_argument(
-        "--provider",
-        choices=available_providers(),
-        default="anthropic",
-        help="LLM provider to use (default: anthropic)",
-    )
+    parser.add_argument("--debug", action="store_true", help="Print pipeline debug logs")
     args = parser.parse_args()
-    provider = args.provider
 
-    provider_cls = REGISTRY[provider]
-    model_label = f"{provider_cls.model} ({provider})"
+    if args.debug:
+        logging.getLogger("recipe_agent").setLevel(logging.DEBUG)
+        logging.basicConfig(format="[DEBUG] %(name)s — %(message)s", level=logging.WARNING)
+        console.print("[dim]Debug logging enabled.[/dim]\n")
 
     console.print(Panel(
-        BANNER + f"\n[dim]  Model: [bold]{model_label}[/bold][/dim]",
+        BANNER + f"\n[dim]  Model: [bold]{MODEL}[/bold][/dim]",
         border_style="cyan",
         padding=(0, 2),
     ))
 
     _check_db()
-    _check_api_key(provider)
+    _check_api_key()
 
     console.print()
     console.print("[dim]Enter your preferences below. Press [bold]Ctrl-C[/bold] to exit.[/dim]")
@@ -93,12 +88,12 @@ def main() -> None:
     ingredients = _ask("Available ingredients (comma-separated)") or "pantry staples"
 
     console.print()
-    console.rule(f"[cyan]Searching with {provider_cls.model}…[/cyan]")
+    console.rule(f"[cyan]Searching with {MODEL}…[/cyan]")
     console.print()
 
     with console.status("[bold cyan]Agent is thinking…[/bold cyan]", spinner="dots"):
         try:
-            result = run_agent(preferences=preferences, ingredients=ingredients, provider=provider)
+            result = run_agent(preferences=preferences, ingredients=ingredients)
         except Exception as exc:
             console.print(f"[bold red]Error:[/bold red] {exc}")
             sys.exit(1)
