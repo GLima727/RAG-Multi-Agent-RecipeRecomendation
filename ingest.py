@@ -8,7 +8,7 @@ Run once (or re-run to rebuild the index):
 import argparse
 
 from recipe_agent.config import CHROMA_DB_PATH, DEFAULT_INGEST_BATCH_SIZE, DEFAULT_INGEST_SUBSET
-from recipe_agent.rag import ingest
+from recipe_agent.rag.ingestion import ingest
 
 
 def main() -> None:

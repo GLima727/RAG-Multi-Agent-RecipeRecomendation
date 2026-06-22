@@ -1,0 +1,17 @@
+.git
+.venv
+.env
+.ruff_cache
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+
+# Large runtime data — mounted as volumes at runtime
+chroma_db/
+
+# Frontend is its own build context
+frontend/
+
+# Test suite not needed in the image
+tests/

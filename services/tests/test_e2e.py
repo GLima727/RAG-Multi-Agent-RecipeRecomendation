@@ -9,7 +9,7 @@ import os
 
 import pytest
 
-from recipe_agent import run_agent
+from recipe_agent.agent import run_agent
 
 pytestmark = pytest.mark.e2e
 

@@ -18,7 +18,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from recipe_agent import run_agent
+from recipe_agent.agent import run_agent
 from recipe_agent.agents.recipe_agent import API_KEY_ENV, MODEL
 from recipe_agent.config import CHROMA_DB_PATH
 

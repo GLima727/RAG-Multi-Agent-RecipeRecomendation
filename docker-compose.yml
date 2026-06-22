@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements-api.txt
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      CHROMA_DB_PATH: /app/chroma_db
+    volumes:
+      - chroma_data:/app/chroma_db
+      - hf_cache:/root/.cache/huggingface   # persists the embedding model across restarts
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # One-shot service to build the ChromaDB index.
+  # Run once before starting the stack: docker compose run --rm ingest
+  ingest:
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements-ingest.txt
+    command: python ingest.py
+    env_file: .env
+    environment:
+      CHROMA_DB_PATH: /app/chroma_db
+    volumes:
+      - chroma_data:/app/chroma_db
+      - hf_cache:/root/.cache/huggingface
+    profiles: [setup]
+
+volumes:
+  chroma_data:
+  hf_cache:
